@@ -16,6 +16,7 @@ constexpr uint32_t IMAGE_SCN_MEM_EXECUTE = 0x20000000;
 constexpr uint32_t IMAGE_SCN_MEM_READ    = 0x40000000;
 constexpr uint32_t IMAGE_SCN_MEM_WRITE   = 0x80000000;
 constexpr uint32_t IMAGE_DIRECTORY_ENTRY_IMPORT = 1;
+constexpr uint32_t IMAGE_DIRECTORY_ENTRY_EXPORT  = 0;
 
 typedef struct _IMAGE_FILE_HEADER {
   WORD  Machine;
@@ -120,3 +121,24 @@ typedef struct _IMAGE_IMPORT_DESCRIPTOR { // PE Docs said 4 bytes for each and i
   uint32_t Name;
   uint32_t ImportAddrTable;  
 } IMAGE_IMPORT_DESCRIPTOR, *PIMAGE_IMPORT_DESCRIPTOR;
+
+typedef struct _IMAGE_EXPORT_DIRECTORY {
+  uint32_t ExportFlags; // reserved must be 0
+  uint32_t TimeDateStamp;
+  uint16_t MajorVersion;
+  uint16_t MinorVersion;
+  uint32_t Name;
+  uint32_t OrdinalBase;
+  uint32_t NumberOfFunctions;
+  uint32_t NumberOfNames;
+  uint32_t AddressOfFunctions;
+  uint32_t AddressOfNames;
+  uint32_t AddressOfOrdinals;
+} IMAGE_EXPORT_DIRECTORY, *PIMAGE_EXPORT_DIRECTORY;
+
+typedef struct _IMAGE_EXPORT_ADDRESS {
+  union {
+    uint32_t ExportRVA;
+    uint32_t ForwarderRVA;
+  };
+} IMAGE_EXPORT_ADDRESS, *PIMAGE_EXPORT_ADDRESS;

@@ -102,8 +102,30 @@ Component RenderImports(const PEParser& pe) {
     });
 }
 
-Element RenderExports(const PEParser& pe) {
-    
+Component RenderExports(const PEParser& pe) {
+    auto entries = std::make_shared<std::vector<std::string>>();
+    auto exports = pe.Exports();
+
+    if (exports.empty()) {
+        entries->push_back("no exports found");
+    }
+
+    for (auto& exp : exports) {
+        if (!exp.forwarder.empty()) {
+            entries->push_back(std::format("{:<6} {:<50} -> {}", 
+                exp.ordinal, exp.name, exp.forwarder));
+        } else {
+            entries->push_back(std::format("{:<6} {:<50} 0x{:08X}", 
+                exp.ordinal, exp.name, exp.rva));
+        }
+    }
+
+    auto selected = std::make_shared<int>(0);
+    auto menu = Menu(entries.get(), selected.get());
+
+    return Renderer(menu, [menu, entries, selected] {
+        return menu->Render() | vscroll_indicator | frame | flex;
+    });
 }
 
 int main(int argc, char* argv[]) {
@@ -123,7 +145,7 @@ int main(int argc, char* argv[]) {
         Renderer([&]{ return RenderHeaders(pe); }),
         Renderer([&] { return RenderSections(pe); }),
         RenderImports(pe),
-        Renderer([&] { return text("i cba to make this rn bro"); })
+        RenderExports(pe)
     }, &tab);
 
     auto layout = Container::Vertical({ tabToggle, tabContent });

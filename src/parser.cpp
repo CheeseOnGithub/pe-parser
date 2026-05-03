@@ -47,6 +47,8 @@ void PEParser::WalkLookupTable(uint32_t iltOffset, ImportEntry& entry) const {
 std::vector<ImportEntry> PEParser::Imports() const {
     auto& importDir = data.ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
 
+    if (importDir.VirtualAddress == 0) return {};
+
     uint32_t arrOffset = RvaToOffset(importDir.VirtualAddress);
     auto descriptor = file.as<IMAGE_IMPORT_DESCRIPTOR>(arrOffset);
 
@@ -109,16 +111,73 @@ void PEParser::Parse(const MappedFile& file) {
     );
 }
 
-const uint32_t PEParser::RvaToOffset(uint32_t rva) const {
-    for (auto& s : data.sections) {
-        if (rva >= s.VirtualAddress && rva < s.VirtualAddress + s.Misc.VirtualSize) {
-            return rva - s.VirtualAddress + s.PointerToRawData;
+std::vector<ExportEntry> PEParser::Exports() const { // i had to add like 10223489204 checks because it kept crashing
+    auto& exportDir = data.ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+
+    if (exportDir.VirtualAddress == 0) return {};
+
+    auto* exports = file.as<IMAGE_EXPORT_DIRECTORY>(RvaToOffset(exportDir.VirtualAddress));
+
+    if (exports->AddressOfNames == 0 || 
+        exports->AddressOfFunctions == 0 || 
+        exports->AddressOfOrdinals == 0) return {};
+
+    if (exports->NumberOfNames == 0 || 
+        exports->NumberOfFunctions == 0) return {};
+
+    auto* names    = file.as<uint32_t>(RvaToOffset(exports->AddressOfNames));
+    auto* funcs    = file.as<uint32_t>(RvaToOffset(exports->AddressOfFunctions));
+    auto* ordinals = file.as<uint16_t>(RvaToOffset(exports->AddressOfOrdinals));
+
+    std::vector<ExportEntry> ret;
+
+    for (uint32_t i = 0; i < exports->NumberOfNames && i < exports->NumberOfFunctions; i++) {
+        if (names[i] == 0) continue;
+
+        uint16_t ordinalIndex = ordinals[i];
+        if (ordinalIndex >= exports->NumberOfFunctions) continue;
+
+        ExportEntry entry;
+
+        try {
+            entry.name = file.as<char>(RvaToOffset(names[i]));
+        } catch (...) {
+            entry.name = std::format("<invalid name rva: 0x{:08X}>", names[i]);
         }
+
+        uint32_t funcRva = funcs[ordinalIndex];
+        bool isForwarder = funcRva >= exportDir.VirtualAddress && 
+                        funcRva <  exportDir.VirtualAddress + exportDir.Size;
+
+        try {
+            if (isForwarder) {
+                entry.forwarder = file.as<char>(RvaToOffset(funcRva));
+            } else {
+                entry.rva = funcRva;
+            }
+        } catch (...) {
+            entry.rva = funcRva;
+        }
+
+        ret.push_back(std::move(entry));
     }
 
-    throw std::runtime_error("rva not found in sections");
+    return ret;
 }
 
+uint32_t PEParser::RvaToOffset(uint32_t rva) const {
+    if (rva == 0) return 0;
+
+    for (auto& s : data.sections) {
+        if (rva >= s.VirtualAddress && rva < s.VirtualAddress + s.Misc.VirtualSize)
+            return rva - s.VirtualAddress + s.PointerToRawData;
+    }
+    
+    if (rva < data.sections[0].VirtualAddress)
+        return rva;
+
+    throw std::runtime_error(std::format("rva 0x{:08X} not found in sections", rva));
+}
 bool PEParser::IsPEFile() {
     auto* dos = file.as<IMAGE_DOS_HEADER>();
     if (dos->e_magic != 0x5A4D) return false; // "MZ"

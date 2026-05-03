@@ -20,7 +20,7 @@
         outputs = [ "out" ];
 
         shellHook = ''
-          echo "cp loaded"
+          echo "loaded"
           unset NIX_LDFLAGS
         '';
       };

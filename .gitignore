@@ -1,0 +1,22 @@
+# Build output
+build/
+
+# Nix
+.direnv/
+result
+result-*
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Editor
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store

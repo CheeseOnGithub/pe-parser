@@ -30,14 +30,17 @@ public:
 private:
     const MappedFile& file;
     struct PEData {
+        bool isPE32Plus = false;
         const IMAGE_NT_HEADERS* ntHeaders = nullptr;
+        const IMAGE_NT_HEADERS64* ntHeaders64 = nullptr;
         std::span<const IMAGE_SECTION_HEADER> sections;
     } data;
 
-    bool IsPEFile();
+    bool IsPEFile() const;
     void Parse(const MappedFile& file);
     template<typename T> 
     void WalkLookupTable(uint32_t iltOffset, ImportEntry& entry) const;
+    const IMAGE_DATA_DIRECTORY& GetDataDirectory(uint32_t index) const;
 
     uint32_t RvaToOffset(uint32_t rva) const;
 };

@@ -2,7 +2,6 @@
 #include "winTypes.h"
 #include <cmath>
 #include <cstdint>
-#include <exception>
 #include <format>
 #include <stdexcept>
 
@@ -45,7 +44,7 @@ void PEParser::WalkLookupTable(uint32_t iltOffset, ImportEntry& entry) const {
 }
 
 std::vector<ImportEntry> PEParser::Imports() const {
-    auto& importDir = data.ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    auto& importDir = GetDataDirectory(IMAGE_DIRECTORY_ENTRY_IMPORT);
 
     if (importDir.VirtualAddress == 0) return {};
 
@@ -54,14 +53,12 @@ std::vector<ImportEntry> PEParser::Imports() const {
 
     std::vector<ImportEntry> imports;
 
-    bool isPE32Plus = data.ntHeaders->OptionalHeader.Magic == 0x20B;
-
     while(descriptor->Name != 0) {
         ImportEntry entry;
         entry.dllName = file.as<char>(RvaToOffset(descriptor->Name));
 
         uint32_t iltOffset = RvaToOffset(descriptor->ImportLookupTable);
-        if (isPE32Plus) {
+        if (data.isPE32Plus) {
             WalkLookupTable<uint64_t>(iltOffset, entry);
         } else {
             WalkLookupTable<uint32_t>(iltOffset, entry);
@@ -100,23 +97,36 @@ std::span<const std::byte> PEParser::SectionData(const IMAGE_SECTION_HEADER& sec
 
 void PEParser::Parse(const MappedFile& file) {
     auto* dos = file.as<IMAGE_DOS_HEADER>();
-    auto* ntHeaders = file.as<IMAGE_NT_HEADERS>(dos->e_lfanew);
+    uint16_t magic = *file.as<uint16_t>(dos->e_lfanew + sizeof(LONG) + sizeof(IMAGE_FILE_HEADER)); // peek to check if x64 or x32
+    data.isPE32Plus = (magic == 0x20B);
 
-    data.ntHeaders = ntHeaders;
+    size_t sectionOffset;
 
-    size_t sectionOffset = dos->e_lfanew + offsetof(IMAGE_NT_HEADERS, OptionalHeader) + ntHeaders->FileHeader.SizeOfOptionalHeader; // retarded
-    data.sections = std::span<const IMAGE_SECTION_HEADER>(
-        file.as<const IMAGE_SECTION_HEADER>(sectionOffset),
-        ntHeaders->FileHeader.NumberOfSections
-    );
+    if (data.isPE32Plus) {
+        auto* nt = file.as<IMAGE_NT_HEADERS64>(dos->e_lfanew);
+        data.ntHeaders64 = nt;
+        sectionOffset = dos->e_lfanew + offsetof(IMAGE_NT_HEADERS64, OptionalHeader) + nt->FileHeader.SizeOfOptionalHeader;
+    } else {
+        auto* nt = file.as<IMAGE_NT_HEADERS>(dos->e_lfanew);
+        data.ntHeaders = nt;
+        sectionOffset = dos->e_lfanew + offsetof(IMAGE_NT_HEADERS, OptionalHeader) + nt->FileHeader.SizeOfOptionalHeader;
+    }
+
+    auto* first = file.as<IMAGE_SECTION_HEADER>(sectionOffset);
+    uint16_t numSections = data.isPE32Plus ? data.ntHeaders64->FileHeader.NumberOfSections : data.ntHeaders->FileHeader.NumberOfSections;
+    data.sections = std::span<const IMAGE_SECTION_HEADER>(first, numSections);
 }
 
 std::vector<ExportEntry> PEParser::Exports() const { // i had to add like 10223489204 checks because it kept crashing
-    auto& exportDir = data.ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    auto& exportDir = GetDataDirectory(IMAGE_DIRECTORY_ENTRY_EXPORT);
 
     if (exportDir.VirtualAddress == 0) return {};
 
     auto* exports = file.as<IMAGE_EXPORT_DIRECTORY>(RvaToOffset(exportDir.VirtualAddress));
+
+    auto offset = RvaToOffset(exportDir.VirtualAddress);
+
+    auto* raw = file.bytes().data() + offset;
 
     if (exports->AddressOfNames == 0 || 
         exports->AddressOfFunctions == 0 || 
@@ -125,7 +135,7 @@ std::vector<ExportEntry> PEParser::Exports() const { // i had to add like 102234
     if (exports->NumberOfNames == 0 || 
         exports->NumberOfFunctions == 0) return {};
 
-    auto* names    = file.as<uint32_t>(RvaToOffset(exports->AddressOfNames));
+    auto* names    = file.as<uint32_t>(RvaToOffset(exports->AddressOfNames)); // this crashes
     auto* funcs    = file.as<uint32_t>(RvaToOffset(exports->AddressOfFunctions));
     auto* ordinals = file.as<uint16_t>(RvaToOffset(exports->AddressOfOrdinals));
 
@@ -178,9 +188,15 @@ uint32_t PEParser::RvaToOffset(uint32_t rva) const {
 
     throw std::runtime_error(std::format("rva 0x{:08X} not found in sections", rva));
 }
-bool PEParser::IsPEFile() {
+
+bool PEParser::IsPEFile() const {
     auto* dos = file.as<IMAGE_DOS_HEADER>();
     if (dos->e_magic != 0x5A4D) return false; // "MZ"
     auto* nt = file.as<IMAGE_NT_HEADERS>(dos->e_lfanew);
     return nt->Signature == 0x00004550; // PE\0\0
+}
+
+const IMAGE_DATA_DIRECTORY& PEParser::GetDataDirectory(uint32_t index) const {
+    if (data.isPE32Plus) return data.ntHeaders64->OptionalHeader.DataDirectory[index];
+    return data.ntHeaders->OptionalHeader.DataDirectory[index];
 }

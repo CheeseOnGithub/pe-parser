@@ -17,29 +17,46 @@
 using namespace ftxui;
 
 Element RenderHeaders(const PEParser& pe) {
-    auto nt = pe.NtHeaders();
-    auto& opt = nt->OptionalHeader;
+    WORD magic;
+    DWORD entryPoint, subsystem, numSections, timestamp;
+    uint64_t imageBase;
 
+    if (pe.IsPE32Plus()) {
+        auto nt = pe.NtHeaders64();
+        auto& opt = nt->OptionalHeader;
+        magic      = opt.Magic;
+        entryPoint = opt.AddressOfEntryPoint;
+        imageBase  = opt.ImageBase;
+        subsystem  = opt.Subsystem;
+        numSections = nt->FileHeader.NumberOfSections;
+        timestamp  = nt->FileHeader.TimeDateStamp;
+    } else {
+        auto nt = pe.NtHeaders();
+        auto& opt = nt->OptionalHeader;
+        magic      = opt.Magic;
+        entryPoint = opt.AddressOfEntryPoint;
+        imageBase  = opt.ImageBase;
+        subsystem  = opt.Subsystem;
+        numSections = nt->FileHeader.NumberOfSections;
+        timestamp  = nt->FileHeader.TimeDateStamp;
+    }
 
-    auto timestamp = std::chrono::sys_seconds(
-        std::chrono::seconds(nt->FileHeader.TimeDateStamp)
-    );
-    std::string time = std::format("{:%Y-%m-%d %H:%M:%S}", timestamp);
+    auto time = std::format("{:%Y-%m-%d %H:%M:%S}",
+        std::chrono::sys_seconds(std::chrono::seconds(timestamp)));
 
     auto table = Table({
-        { "field",        "value"                          },
-        { "magic",        opt.Magic == 0x20B ? "PE32+" : "PE32" },
-        { "entry point",  std::format("0x{:08X}", opt.AddressOfEntryPoint) },
-        { "image base",   std::format("0x{:016X}", opt.ImageBase) },
-        { "subsystem",    std::format("{}", opt.Subsystem)  },
-        { "sections",     std::format("{}", nt->FileHeader.NumberOfSections) },
-        { "timestamp",    std::format("{}", time) },
+        { "field",       "value" },
+        { "magic",       magic == 0x20B ? "PE32+" : "PE32" },
+        { "entry point", std::format("0x{:08X}", entryPoint) },
+        { "image base",  std::format("0x{:016X}", imageBase) },
+        { "subsystem",   std::format("{}", subsystem) },
+        { "sections",    std::format("{}", numSections) },
+        { "timestamp",   time },
     });
 
     table.SelectAll().Border(LIGHT);
     table.SelectRow(0).Decorate(bold);
     table.SelectColumn(0).Decorate(color(Color::Yellow));
-
     return table.Render();
 }
 

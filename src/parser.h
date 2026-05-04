@@ -21,11 +21,13 @@ class PEParser {
 public:
     explicit PEParser(const MappedFile& _file);
     const IMAGE_NT_HEADERS* NtHeaders() const;
+    const IMAGE_NT_HEADERS64* NtHeaders64() const;
     const std::span<const IMAGE_SECTION_HEADER> Sections() const;
     std::vector<ImportEntry> Imports() const;
     std::vector<ExportEntry> Exports() const;
     std::span<const std::byte> SectionData(const IMAGE_SECTION_HEADER& section) const;
     static float Entropy(std::span<const std::byte> bytes); // shannon entropy
+    bool IsPE32Plus() const;
 
 private:
     const MappedFile& file;
@@ -36,8 +38,7 @@ private:
         std::span<const IMAGE_SECTION_HEADER> sections;
     } data;
 
-    bool IsPEFile() const;
-    void Parse(const MappedFile& file);
+    bool IsPEFile() const;    void Parse(const MappedFile& file);
     template<typename T> 
     void WalkLookupTable(uint32_t iltOffset, ImportEntry& entry) const;
     const IMAGE_DATA_DIRECTORY& GetDataDirectory(uint32_t index) const;

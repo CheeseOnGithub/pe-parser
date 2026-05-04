@@ -14,6 +14,14 @@ const IMAGE_NT_HEADERS* PEParser::NtHeaders() const {
     return data.ntHeaders;
 }
 
+const IMAGE_NT_HEADERS64* PEParser::NtHeaders64() const {
+    return data.ntHeaders64;
+}
+
+bool PEParser::IsPE32Plus() const {
+    return data.isPE32Plus;
+}
+
 const std::span<const IMAGE_SECTION_HEADER> PEParser::Sections() const {
     return data.sections;
 }
